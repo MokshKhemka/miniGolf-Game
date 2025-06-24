@@ -19,6 +19,8 @@ import MenuItem from '@mui/material/MenuItem';
 import { LEVELS } from './levels';
 import type { Powerup } from './levels';
 import './App.css';
+import VolumeUpIcon from '@mui/icons-material/VolumeUp';
+import VolumeOffIcon from '@mui/icons-material/VolumeOff';
 
 const BALL_RADIUS = 15;
 const HOLE_RADIUS = 10;
@@ -30,6 +32,11 @@ const MIN_SPEED = 0.2;
 // Sound effects
 const shootSound = new Audio('https://cdn.pixabay.com/audio/2022/07/26/audio_124bfa4c7b.mp3');
 const winSound = new Audio('https://cdn.pixabay.com/audio/2022/07/26/audio_124bfa4c7b.mp3');
+
+function randomColor() {
+  const colors = ['#f44336', '#ffeb3b', '#4caf50', '#2196f3', '#ff9800', '#e91e63'];
+  return colors[Math.floor(Math.random() * colors.length)];
+}
 
 function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -58,6 +65,8 @@ function App() {
     const saved = localStorage.getItem('minigolf-best-scores');
     return saved ? JSON.parse(saved) : Array(LEVELS.length).fill(null);
   });
+  const [soundOn, setSoundOn] = useState(true);
+  const [confetti, setConfetti] = useState<{x:number,y:number,vx:number,vy:number,color:string}[]>([]);
 
   // Draw course, obstacles, aiming line, and animated flag
   useEffect(() => {
@@ -315,6 +324,54 @@ function App() {
     else parFeedback = 'Over par! Try again!';
   }
 
+  // Confetti animation
+  useEffect(() => {
+    if (!confetti.length) return;
+    let animId: number;
+    function animate() {
+      setConfetti(prev => prev.map(c => ({ ...c, x: c.x + c.vx, y: c.y + c.vy + 1, vy: c.vy + 0.2 }))
+        .filter(c => c.y < CANVAS_H));
+      animId = requestAnimationFrame(animate);
+    }
+    animId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animId);
+  }, [confetti]);
+
+  // Draw confetti
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    // ... existing drawing code ...
+    // Draw confetti
+    confetti.forEach(c => {
+      ctx.fillStyle = c.color;
+      ctx.fillRect(c.x, c.y, 6, 12);
+    });
+  }, [ball, aiming, aimStart, aimEnd, obstacles, hole, confetti]);
+
+  // Play sounds only if soundOn
+  useEffect(() => {
+    shootSound.muted = !soundOn;
+    winSound.muted = !soundOn;
+  }, [soundOn]);
+
+  // When win, trigger confetti
+  useEffect(() => {
+    if (showSnackbar && message.includes('Level Complete')) {
+      setConfetti(Array.from({length: 60}, () => ({
+        x: Math.random() * CANVAS_W,
+        y: 0,
+        vx: (Math.random() - 0.5) * 4,
+        vy: Math.random() * 2 + 2,
+        color: randomColor()
+      })));
+      const timeout = setTimeout(() => setConfetti([]), 3000);
+      return () => clearTimeout(timeout);
+    }
+  }, [showSnackbar, message]);
+
   return (
     <Box sx={{ display: 'flex', height: '100vh', bgcolor: '#e0f2f1' }}>
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: '#e0f2f1', minHeight: '100vh' }}>
@@ -357,6 +414,15 @@ function App() {
             <Button variant="contained" color="primary" startIcon={<RestartAltIcon />} sx={{ mt: 2 }} onClick={handleRestartGame}>Restart Game</Button>
           </Paper>
         )}
+        <Button
+          variant="outlined"
+          color={soundOn ? 'primary' : 'secondary'}
+          startIcon={soundOn ? <VolumeUpIcon /> : <VolumeOffIcon />}
+          sx={{ position: 'absolute', top: 24, right: 24, zIndex: 10 }}
+          onClick={() => setSoundOn(s => !s)}
+        >
+          {soundOn ? 'Sound On' : 'Sound Off'}
+        </Button>
       </Box>
       <Paper elevation={3} sx={{ width: 300, p: 3, display: 'flex', flexDirection: 'column', gap: 2, bgcolor: '#fafafa' }}>
         <Typography variant="h5">Controls</Typography>
