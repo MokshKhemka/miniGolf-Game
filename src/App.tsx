@@ -5,16 +5,31 @@ import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
 import Snackbar from '@mui/material/Snackbar';
 import MuiAlert from '@mui/material/Alert';
+import SportsGolfIcon from '@mui/icons-material/SportsGolf';
+import FlashOnIcon from '@mui/icons-material/FlashOn';
+import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
+import CelebrationIcon from '@mui/icons-material/Celebration';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import PauseIcon from '@mui/icons-material/Pause';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
+import Modal from '@mui/material/Modal';
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
 import { LEVELS } from './levels';
-import type { Powerup, LevelConfig } from './levels';
+import type { Powerup } from './levels';
 import './App.css';
 
 const BALL_RADIUS = 15;
 const HOLE_RADIUS = 10;
-const CANVAS_W = 400;
-const CANVAS_H = 300;
-const FRICTION = 0.98;
-const MIN_SPEED = 0.5;
+const CANVAS_W = window.innerWidth > 1200 ? 1200 : window.innerWidth - 100;
+const CANVAS_H = window.innerHeight > 800 ? 800 : window.innerHeight - 100;
+const FRICTION = 0.96;
+const MIN_SPEED = 0.2;
+
+// Sound effects
+const shootSound = new Audio('https://cdn.pixabay.com/audio/2022/07/26/audio_124bfa4c7b.mp3');
+const winSound = new Audio('https://cdn.pixabay.com/audio/2022/07/26/audio_124bfa4c7b.mp3');
 
 function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -32,15 +47,29 @@ function App() {
   const [aimEnd, setAimEnd] = useState<{ x: number; y: number } | null>(null);
   const [showSnackbar, setShowSnackbar] = useState(false);
   const [superShotActive, setSuperShotActive] = useState(false);
+  const [gameOver, setGameOver] = useState(false);
+  const [finalScore, setFinalScore] = useState(0);
+  const [finalPar, setFinalPar] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [showHowTo, setShowHowTo] = useState(false);
+  const [strokeLimit, setStrokeLimit] = useState(LEVELS[0].par * 2);
+  const [levelSelect, setLevelSelect] = useState(0);
+  const [bestScores, setBestScores] = useState<number[]>(() => {
+    const saved = localStorage.getItem('minigolf-best-scores');
+    return saved ? JSON.parse(saved) : Array(LEVELS.length).fill(null);
+  });
 
-  // Draw course, obstacles, and aiming line
+  // Draw course, obstacles, aiming line, and animated flag
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
-    ctx.fillStyle = '#4caf50';
+    // Background gradient
+    const grad = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+    grad.addColorStop(0, '#a7ffeb');
+    grad.addColorStop(1, '#4caf50');
+    ctx.fillStyle = grad;
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     // Obstacles
     ctx.fillStyle = '#607d8b';
@@ -56,6 +85,21 @@ function App() {
     ctx.fillStyle = '#000';
     ctx.beginPath();
     ctx.arc(hole.x, hole.y, hole.r, 0, Math.PI * 2);
+    ctx.fill();
+    // Animated flag
+    const flagHeight = 40 + 10 * Math.sin(Date.now() / 300);
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(hole.x, hole.y - hole.r);
+    ctx.lineTo(hole.x, hole.y - flagHeight);
+    ctx.stroke();
+    ctx.fillStyle = '#f44336';
+    ctx.beginPath();
+    ctx.moveTo(hole.x, hole.y - flagHeight);
+    ctx.lineTo(hole.x + 18, hole.y - flagHeight + 10);
+    ctx.lineTo(hole.x, hole.y - flagHeight + 20);
+    ctx.closePath();
     ctx.fill();
     // Aiming line
     if (aiming && aimStart && aimEnd) {
@@ -118,11 +162,20 @@ function App() {
         // Check if in hole
         const dist = Math.hypot(next.x - hole.x, next.y - hole.y);
         if (dist < hole.r) {
+          winSound.currentTime = 0; winSound.play();
           setMessage('Level Complete!');
           setShowSnackbar(true);
           setMoving(false);
           setVelocity({ x: 0, y: 0 });
           setSuperShotActive(false);
+          // If last level, show game over after short delay
+          if (level === LEVELS.length - 1) {
+            setTimeout(() => {
+              setGameOver(true);
+              setFinalScore(sc => sc + strokeCount);
+              setFinalPar(p => p + LEVELS[level].par);
+            }, 1200);
+          }
           return { ...hole };
         }
         // Stop if slow
@@ -138,7 +191,7 @@ function App() {
     }
     animId = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animId);
-  }, [moving, velocity, obstacles, hole, superShotActive]);
+  }, [moving, velocity, obstacles, hole, superShotActive, level, strokeCount]);
 
   // Mouse events for aiming
   const getCanvasPos = (e: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
@@ -171,7 +224,8 @@ function App() {
     const dy = aimStart.y - aimEnd.y;
     const power = Math.min(Math.hypot(dx, dy) / 10, 10);
     if (power > 0.5) {
-      setVelocity({ x: dx / 10, y: dy / 10 });
+      shootSound.currentTime = 0; shootSound.play();
+      setVelocity({ x: dx / 18, y: dy / 18 });
       setMoving(true);
       setStrokeCount(c => c + 1);
       setMessage('');
@@ -198,12 +252,17 @@ function App() {
   };
 
   const handleNextLevel = () => {
-    const nextLevel = (level + 1) % LEVELS.length;
-    setLevel(nextLevel);
-    setBall({ ...LEVELS[nextLevel].ball });
-    setHole({ ...LEVELS[nextLevel].hole });
-    setObstacles(LEVELS[nextLevel].obstacles);
-    setPowerups(LEVELS[nextLevel].powerups.map(p => ({ ...p })));
+    if (level === LEVELS.length - 1) {
+      setGameOver(true);
+      setFinalScore(sc => sc + strokeCount);
+      setFinalPar(p => p + LEVELS[level].par);
+      return;
+    }
+    setLevel(lvl => lvl + 1);
+    setBall({ ...LEVELS[level + 1].ball });
+    setHole({ ...LEVELS[level + 1].hole });
+    setObstacles(LEVELS[level + 1].obstacles);
+    setPowerups(LEVELS[level + 1].powerups.map(p => ({ ...p })));
     setVelocity({ x: 0, y: 0 });
     setMessage('');
     setMoving(false);
@@ -215,6 +274,26 @@ function App() {
     setSuperShotActive(false);
   };
 
+  const handleRestartGame = () => {
+    setLevel(0);
+    setBall({ ...LEVELS[0].ball });
+    setHole({ ...LEVELS[0].hole });
+    setObstacles(LEVELS[0].obstacles);
+    setPowerups(LEVELS[0].powerups.map(p => ({ ...p })));
+    setVelocity({ x: 0, y: 0 });
+    setMessage('');
+    setMoving(false);
+    setStrokeCount(0);
+    setAiming(false);
+    setAimStart(null);
+    setAimEnd(null);
+    setShowSnackbar(false);
+    setSuperShotActive(false);
+    setGameOver(false);
+    setFinalScore(0);
+    setFinalPar(0);
+  };
+
   // Powerup logic
   const usePowerup = (type: Powerup['type']) => {
     if (moving) return;
@@ -222,39 +301,72 @@ function App() {
       setSuperShotActive(true);
       setPowerups(p => p.map(pp => pp.type === 'superShot' && !pp.used ? { ...pp, used: true } : pp));
     } else if (type === 'teleport') {
-      // Move ball near hole
       setBall(prev => ({ x: hole.x - 2 * BALL_RADIUS, y: hole.y }));
       setPowerups(p => p.map(pp => pp.type === 'teleport' && !pp.used ? { ...pp, used: true } : pp));
     }
   };
 
+  // Par feedback
+  const par = LEVELS[level].par;
+  let parFeedback = '';
+  if (!moving && !aiming && !gameOver && message && message.includes('Level Complete')) {
+    if (strokeCount < par) parFeedback = 'Birdie! You beat par!';
+    else if (strokeCount === par) parFeedback = 'Par!';
+    else parFeedback = 'Over par! Try again!';
+  }
+
   return (
     <Box sx={{ display: 'flex', height: '100vh', bgcolor: '#e0f2f1' }}>
-      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-        <Typography variant="h3" gutterBottom>MiniGolf Game</Typography>
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: '#e0f2f1', minHeight: '100vh' }}>
+        <Typography variant="h3" gutterBottom>MiniGolf Game <SportsGolfIcon fontSize="large" /></Typography>
         <Typography variant="h6" color="primary" sx={{ mb: 1 }}>Level {level + 1} / {LEVELS.length}</Typography>
+        <Typography variant="h6" color="secondary" sx={{ mb: 1 }}>Par: {par}</Typography>
         <canvas
           ref={canvasRef}
           width={CANVAS_W}
           height={CANVAS_H}
-          style={{ border: '2px solid #333', background: '#4caf50', borderRadius: 8, cursor: moving ? 'not-allowed' : 'crosshair' }}
+          style={{
+            border: '2px solid #333',
+            background: '#4caf50',
+            borderRadius: 8,
+            cursor: moving ? 'not-allowed' : 'crosshair',
+            width: '100%',
+            height: '70vh',
+            maxWidth: 1200,
+            maxHeight: 800,
+            display: 'block',
+            margin: '0 auto',
+          }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
         />
         <Snackbar open={showSnackbar} autoHideDuration={4000} onClose={() => setShowSnackbar(false)}>
           <MuiAlert elevation={6} variant="filled" severity="success" sx={{ width: '100%' }}>
-            {message} <Button color="inherit" size="small" onClick={handleNextLevel}>Next Level</Button>
+            {message} <Button color="inherit" size="small" onClick={handleNextLevel}>{level === LEVELS.length - 1 ? 'Finish Game' : 'Next Level'}</Button>
+            <br />{parFeedback}
           </MuiAlert>
         </Snackbar>
+        {/* Game Over Dialog */}
+        {gameOver && (
+          <Paper elevation={6} sx={{ p: 4, mt: 4, textAlign: 'center', bgcolor: '#fffde7' }}>
+            <Typography variant="h4" color="success.main" gutterBottom>Congratulations! <CelebrationIcon fontSize="large" /></Typography>
+            <Typography variant="h5">Game Over</Typography>
+            <Typography variant="h6" sx={{ mt: 2 }}>Total Strokes: {finalScore}</Typography>
+            <Typography variant="h6">Total Par: {finalPar}</Typography>
+            <Button variant="contained" color="primary" startIcon={<RestartAltIcon />} sx={{ mt: 2 }} onClick={handleRestartGame}>Restart Game</Button>
+          </Paper>
+        )}
       </Box>
       <Paper elevation={3} sx={{ width: 300, p: 3, display: 'flex', flexDirection: 'column', gap: 2, bgcolor: '#fafafa' }}>
         <Typography variant="h5">Controls</Typography>
-        <Button variant="outlined" onClick={handleReset} disabled={moving && !message}>Reset Level</Button>
+        <Button variant="outlined" onClick={handleReset} disabled={moving && !message} startIcon={<RestartAltIcon />}>Reset Level</Button>
+        <Typography variant="body1" sx={{ mt: 2, fontWeight: 'bold', fontSize: 22, color: '#1976d2' }}>
+          <RocketLaunchIcon sx={{ mr: 1, verticalAlign: 'middle' }} />Strokes: {strokeCount}
+        </Typography>
         <Typography variant="body1" sx={{ mt: 2 }}>
           Click and drag from the ball to aim and set power.<br />
           Release to shoot. Try to get the ball in the hole!<br />
-          <b>Strokes:</b> {strokeCount}
         </Typography>
         <Box sx={{ mt: 2 }}>
           <Typography variant="h6">Powerups</Typography>
@@ -267,6 +379,7 @@ function App() {
               disabled={!!p.used || moving}
               sx={{ mr: 1, mb: 1 }}
               onClick={() => usePowerup(p.type)}
+              startIcon={p.type === 'superShot' ? <FlashOnIcon /> : <RocketLaunchIcon />}
             >
               {p.type === 'superShot' ? 'Super Shot' : 'Teleport'}
             </Button>
