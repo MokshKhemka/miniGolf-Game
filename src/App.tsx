@@ -21,6 +21,12 @@ import type { Powerup } from './levels';
 import './App.css';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import VolumeOffIcon from '@mui/icons-material/VolumeOff';
+import SettingsIcon from '@mui/icons-material/Settings';
+import ColorLensIcon from '@mui/icons-material/ColorLens';
+import React from 'react';
+import HomeScreen from './HomeScreen';
+import SettingsModal from './SettingsModal';
+import Sidebar from './Sidebar';
 
 const BALL_RADIUS = 15;
 const HOLE_RADIUS = 10;
@@ -33,8 +39,19 @@ const MIN_SPEED = 0.2;
 const shootSound = new Audio('https://cdn.pixabay.com/audio/2022/07/26/audio_124bfa4c7b.mp3');
 const winSound = new Audio('https://cdn.pixabay.com/audio/2022/07/26/audio_124bfa4c7b.mp3');
 
-function randomColor() {
-  const colors = ['#f44336', '#ffeb3b', '#4caf50', '#2196f3', '#ff9800', '#e91e63'];
+const TIPS = [
+  'Try using the Ghost Ball to pass through obstacles!',
+  'Use the aiming line to plan your shot direction.',
+  'Wind can help or hurt—watch the direction!',
+  'Powerups can only be used once per level.',
+  'Try to beat the par for a birdie!',
+  'Change your ball color for extra style.',
+  'Use the trail to see your shot history.',
+  'You can pause the game anytime from the menu.',
+];
+
+function getRandomColor() {
+  const colors = ['#fff', '#f44336', '#ffeb3b', '#4caf50', '#2196f3', '#ff9800', '#e91e63', '#9c27b0'];
   return colors[Math.floor(Math.random() * colors.length)];
 }
 
@@ -67,6 +84,15 @@ function App() {
   });
   const [soundOn, setSoundOn] = useState(true);
   const [confetti, setConfetti] = useState<{x:number,y:number,vx:number,vy:number,color:string}[]>([]);
+  const [showHome, setShowHome] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
+  const [theme, setTheme] = useState<'light'|'dark'>('light');
+  const [showAimingLine, setShowAimingLine] = useState(true);
+  const [ballColor, setBallColor] = useState('#fff');
+  const [trail, setTrail] = useState<{x:number,y:number,color:string}[]>([]);
+  const [wind, setWind] = useState({x:0, y:0});
+  const [ghostBall, setGhostBall] = useState(false);
+  const [tip, setTip] = useState(TIPS[Math.floor(Math.random() * TIPS.length)]);
 
   // Draw course, obstacles, aiming line, and animated flag
   useEffect(() => {
@@ -83,8 +109,17 @@ function App() {
     // Obstacles
     ctx.fillStyle = '#607d8b';
     obstacles.forEach(o => ctx.fillRect(o.x, o.y, o.w, o.h));
+    // Draw trail
+    trail.forEach((t,i)=>{
+      ctx.globalAlpha = (i+1)/trail.length;
+      ctx.fillStyle = t.color;
+      ctx.beginPath();
+      ctx.arc(t.x,t.y,BALL_RADIUS-6,0,Math.PI*2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    });
     // Ball
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = ballColor;
     ctx.beginPath();
     ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI * 2);
     ctx.fill();
@@ -111,7 +146,7 @@ function App() {
     ctx.closePath();
     ctx.fill();
     // Aiming line
-    if (aiming && aimStart && aimEnd) {
+    if (aiming && aimStart && aimEnd && showAimingLine) {
       ctx.strokeStyle = '#1976d2';
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -128,7 +163,7 @@ function App() {
       ctx.lineTo(aimEnd.x - arrowLen * Math.cos(angle + 0.3), aimEnd.y - arrowLen * Math.sin(angle + 0.3));
       ctx.stroke();
     }
-  }, [ball, aiming, aimStart, aimEnd, obstacles, hole]);
+  }, [ball, aiming, aimStart, aimEnd, obstacles, hole, showAimingLine, ballColor, trail]);
 
   // Ball movement animation with improved obstacle collision
   useEffect(() => {
@@ -136,7 +171,7 @@ function App() {
     let animId: number;
     function animate() {
       setBall(prev => {
-        let next = { x: prev.x + velocity.x, y: prev.y + velocity.y };
+        let next = { x: prev.x + velocity.x + wind.x, y: prev.y + velocity.y + wind.y };
         let vx = velocity.x;
         let vy = velocity.y;
         // Wall collision
@@ -200,7 +235,7 @@ function App() {
     }
     animId = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animId);
-  }, [moving, velocity, obstacles, hole, superShotActive, level, strokeCount]);
+  }, [moving, velocity, obstacles, hole, superShotActive, level, strokeCount, wind]);
 
   // Mouse events for aiming
   const getCanvasPos = (e: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
@@ -258,6 +293,7 @@ function App() {
     setAimEnd(null);
     setShowSnackbar(false);
     setSuperShotActive(false);
+    setTip(TIPS[Math.floor(Math.random() * TIPS.length)]);
   };
 
   const handleNextLevel = () => {
@@ -281,6 +317,8 @@ function App() {
     setAimEnd(null);
     setShowSnackbar(false);
     setSuperShotActive(false);
+    setGhostBall(false);
+    setTip(TIPS[Math.floor(Math.random() * TIPS.length)]);
   };
 
   const handleRestartGame = () => {
@@ -301,6 +339,7 @@ function App() {
     setGameOver(false);
     setFinalScore(0);
     setFinalPar(0);
+    setTip(TIPS[Math.floor(Math.random() * TIPS.length)]);
   };
 
   // Powerup logic
@@ -365,16 +404,45 @@ function App() {
         y: 0,
         vx: (Math.random() - 0.5) * 4,
         vy: Math.random() * 2 + 2,
-        color: randomColor()
+        color: getRandomColor()
       })));
       const timeout = setTimeout(() => setConfetti([]), 3000);
       return () => clearTimeout(timeout);
     }
   }, [showSnackbar, message]);
 
+  // Trail effect
+  useEffect(()=>{
+    if(moving) setTrail(t=>[...t,{x:ball.x,y:ball.y,color:ballColor}].slice(-30));
+    else setTrail([]);
+  },[ball,moving,ballColor]);
+
+  // Wind effect
+  useEffect(()=>{
+    setWind({x:(Math.random()-0.5)*2,y:(Math.random()-0.5)*2});
+  },[level]);
+
+  // Show a new tip on level load or reset
+  useEffect(() => {
+    setTip(TIPS[Math.floor(Math.random() * TIPS.length)]);
+  }, [level]);
+
   return (
-    <Box sx={{ display: 'flex', height: '100vh', bgcolor: '#e0f2f1' }}>
-      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: '#e0f2f1', minHeight: '100vh' }}>
+    <Box sx={{ display: 'flex', height: '100vh', bgcolor: theme==='light'?'#e0f2f1':'#222' }}>
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: theme==='light'?'#e0f2f1':'#222', minHeight: '100vh', position: 'relative' }}>
+        {showHome && (
+          <HomeScreen theme={theme} onPlay={()=>setShowHome(false)} onSettings={()=>setShowSettings(true)} />
+        )}
+        <SettingsModal
+          open={showSettings}
+          onClose={()=>setShowSettings(false)}
+          theme={theme}
+          setTheme={setTheme}
+          soundOn={soundOn}
+          setSoundOn={setSoundOn}
+          showAimingLine={showAimingLine}
+          setShowAimingLine={setShowAimingLine}
+        />
         <Typography variant="h3" gutterBottom>MiniGolf Game <SportsGolfIcon fontSize="large" /></Typography>
         <Typography variant="h6" color="primary" sx={{ mb: 1 }}>Level {level + 1} / {LEVELS.length}</Typography>
         <Typography variant="h6" color="secondary" sx={{ mb: 1 }}>Par: {par}</Typography>
@@ -414,44 +482,16 @@ function App() {
             <Button variant="contained" color="primary" startIcon={<RestartAltIcon />} sx={{ mt: 2 }} onClick={handleRestartGame}>Restart Game</Button>
           </Paper>
         )}
-        <Button
-          variant="outlined"
-          color={soundOn ? 'primary' : 'secondary'}
-          startIcon={soundOn ? <VolumeUpIcon /> : <VolumeOffIcon />}
-          sx={{ position: 'absolute', top: 24, right: 24, zIndex: 10 }}
-          onClick={() => setSoundOn(s => !s)}
-        >
-          {soundOn ? 'Sound On' : 'Sound Off'}
-        </Button>
       </Box>
-      <Paper elevation={3} sx={{ width: 300, p: 3, display: 'flex', flexDirection: 'column', gap: 2, bgcolor: '#fafafa' }}>
-        <Typography variant="h5">Controls</Typography>
-        <Button variant="outlined" onClick={handleReset} disabled={moving && !message} startIcon={<RestartAltIcon />}>Reset Level</Button>
-        <Typography variant="body1" sx={{ mt: 2, fontWeight: 'bold', fontSize: 22, color: '#1976d2' }}>
-          <RocketLaunchIcon sx={{ mr: 1, verticalAlign: 'middle' }} />Strokes: {strokeCount}
-        </Typography>
-        <Typography variant="body1" sx={{ mt: 2 }}>
-          Click and drag from the ball to aim and set power.<br />
-          Release to shoot. Try to get the ball in the hole!<br />
-        </Typography>
-        <Box sx={{ mt: 2 }}>
-          <Typography variant="h6">Powerups</Typography>
-          {powerups.length === 0 && <Typography variant="body2">No powerups this level.</Typography>}
-          {powerups.map((p, i) => (
-            <Button
-              key={i}
-              variant={p.used ? 'outlined' : 'contained'}
-              color={p.type === 'superShot' ? 'secondary' : 'success'}
-              disabled={!!p.used || moving}
-              sx={{ mr: 1, mb: 1 }}
-              onClick={() => usePowerup(p.type)}
-              startIcon={p.type === 'superShot' ? <FlashOnIcon /> : <RocketLaunchIcon />}
-            >
-              {p.type === 'superShot' ? 'Super Shot' : 'Teleport'}
-            </Button>
-          ))}
-        </Box>
-      </Paper>
+      <Sidebar
+        strokeCount={strokeCount}
+        handleReset={handleReset}
+        moving={moving}
+        message={message}
+        powerups={powerups}
+        usePowerup={usePowerup}
+        tip={tip}
+      />
     </Box>
   );
 }

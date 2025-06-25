@@ -6,7 +6,7 @@ export interface Obstacle {
 }
 
 export interface Powerup {
-  type: 'superShot' | 'teleport';
+  type: 'superShot' | 'teleport' | 'ghostBall';
   used?: boolean;
 }
 
@@ -23,7 +23,7 @@ export const LEVELS: LevelConfig[] = [
     ball: { x: 100, y: 400 },
     hole: { x: 1100, y: 400, r: 10 },
     obstacles: [],
-    powerups: [{ type: 'superShot' }],
+    powerups: [{ type: 'superShot' }, { type: 'ghostBall' }],
     par: 2,
   },
   {
@@ -32,7 +32,7 @@ export const LEVELS: LevelConfig[] = [
     obstacles: [
       { x: 600, y: 0, w: 30, h: 600 },
     ],
-    powerups: [{ type: 'teleport' }],
+    powerups: [{ type: 'teleport' }, { type: 'ghostBall' }],
     par: 3,
   },
   {
@@ -42,7 +42,7 @@ export const LEVELS: LevelConfig[] = [
       { x: 200, y: 400, w: 800, h: 30 },
       { x: 900, y: 500, w: 30, h: 200 },
     ],
-    powerups: [{ type: 'superShot' }, { type: 'teleport' }],
+    powerups: [{ type: 'superShot' }, { type: 'teleport' }, { type: 'ghostBall' }],
     par: 4,
   },
   {
@@ -53,7 +53,7 @@ export const LEVELS: LevelConfig[] = [
       { x: 800, y: 100, w: 30, h: 600 },
       { x: 900, y: 0, w: 30, h: 300 },
     ],
-    powerups: [{ type: 'superShot' }],
+    powerups: [{ type: 'superShot' }, { type: 'ghostBall' }],
     par: 4,
   },
   {
@@ -65,7 +65,7 @@ export const LEVELS: LevelConfig[] = [
       { x: 800, y: 0, w: 30, h: 400 },
       { x: 900, y: 400, w: 200, h: 30 },
     ],
-    powerups: [{ type: 'teleport' }, { type: 'superShot' }],
+    powerups: [{ type: 'teleport' }, { type: 'superShot' }, { type: 'ghostBall' }],
     par: 5,
   },
 ]; 
