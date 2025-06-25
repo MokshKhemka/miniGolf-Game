@@ -53,10 +53,10 @@ const TIPS = [
 ];
 
 const WORLDS = [
-  { name: 'Forest', image: '/public/world-forest.jpg' },
-  { name: 'Desert', image: '/public/world-desert.jpg' },
-  { name: 'Space', image: '/public/world-space.jpg' },
-  { name: 'Candy', image: '/public/world-candy.jpg' },
+  { name: 'Forest', image: '/world-forest.jpg' },
+  { name: 'Desert', image: '/world-desert.jpg' },
+  { name: 'Space', image: '/world-space.jpg' },
+  { name: 'Candy', image: '/world-candy.jpg' },
 ];
 
 function getRandomColor() {
