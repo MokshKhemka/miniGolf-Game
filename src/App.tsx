@@ -27,6 +27,8 @@ import React from 'react';
 import HomeScreen from './HomeScreen';
 import SettingsModal from './SettingsModal';
 import Sidebar from './Sidebar';
+import WorldsHomeScreen from './WorldsHomeScreen';
+import Tooltip from '@mui/material/Tooltip';
 
 const BALL_RADIUS = 15;
 const HOLE_RADIUS = 10;
@@ -48,6 +50,13 @@ const TIPS = [
   'Change your ball color for extra style.',
   'Use the trail to see your shot history.',
   'You can pause the game anytime from the menu.',
+];
+
+const WORLDS = [
+  { name: 'Forest', image: '/public/world-forest.jpg' },
+  { name: 'Desert', image: '/public/world-desert.jpg' },
+  { name: 'Space', image: '/public/world-space.jpg' },
+  { name: 'Candy', image: '/public/world-candy.jpg' },
 ];
 
 function getRandomColor() {
@@ -93,6 +102,9 @@ function App() {
   const [wind, setWind] = useState({x:0, y:0});
   const [ghostBall, setGhostBall] = useState(false);
   const [tip, setTip] = useState(TIPS[Math.floor(Math.random() * TIPS.length)]);
+  const [showWorlds, setShowWorlds] = useState(true);
+  const [selectedWorld, setSelectedWorld] = useState(0);
+  const [unlockedWorlds, setUnlockedWorlds] = useState(0);
 
   // Draw course, obstacles, aiming line, and animated flag
   useEffect(() => {
@@ -266,7 +278,7 @@ function App() {
     if (!aiming || !aimStart || !aimEnd) return;
     const dx = aimStart.x - aimEnd.x;
     const dy = aimStart.y - aimEnd.y;
-    const power = Math.min(Math.hypot(dx, dy) / 10, 10);
+    const power = Math.min(Math.hypot(dx, dy) / 14, 10);
     if (power > 0.5) {
       shootSound.currentTime = 0; shootSound.play();
       setVelocity({ x: dx / 18, y: dy / 18 });
@@ -427,12 +439,21 @@ function App() {
     setTip(TIPS[Math.floor(Math.random() * TIPS.length)]);
   }, [level]);
 
+  // When all levels in a world are completed, unlock next world
+  useEffect(() => {
+    if (level === LEVELS.length - 1 && message.includes('Level Complete') && selectedWorld === unlockedWorlds && unlockedWorlds < WORLDS.length - 1) {
+      setTimeout(() => setUnlockedWorlds(u => u + 1), 1500);
+    }
+  }, [level, message, selectedWorld, unlockedWorlds]);
+
+  // On startup, show WorldsHomeScreen
+  if (showWorlds) {
+    return <WorldsHomeScreen worlds={WORLDS} unlockedWorlds={unlockedWorlds} onSelectWorld={i => { setSelectedWorld(i); setShowWorlds(false); }} />;
+  }
+
   return (
     <Box sx={{ display: 'flex', height: '100vh', bgcolor: theme==='light'?'#e0f2f1':'#222' }}>
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: theme==='light'?'#e0f2f1':'#222', minHeight: '100vh', position: 'relative' }}>
-        {showHome && (
-          <HomeScreen theme={theme} onPlay={()=>setShowHome(false)} onSettings={()=>setShowSettings(true)} />
-        )}
         <SettingsModal
           open={showSettings}
           onClose={()=>setShowSettings(false)}
