@@ -34,7 +34,7 @@ const BALL_RADIUS = 15;
 const HOLE_RADIUS = 10;
 const CANVAS_W = window.innerWidth > 1200 ? 1200 : window.innerWidth - 100;
 const CANVAS_H = window.innerHeight > 800 ? 800 : window.innerHeight - 100;
-const FRICTION = 0.96;
+const FRICTION = 0.90;
 const MIN_SPEED = 0.2;
 
 // Sound effects
@@ -102,9 +102,10 @@ function App() {
   const [wind, setWind] = useState({x:0, y:0});
   const [ghostBall, setGhostBall] = useState(false);
   const [tip, setTip] = useState(TIPS[Math.floor(Math.random() * TIPS.length)]);
-  const [showWorlds, setShowWorlds] = useState(true);
+  const [showWorlds, setShowWorlds] = useState(false);
   const [selectedWorld, setSelectedWorld] = useState(0);
   const [unlockedWorlds, setUnlockedWorlds] = useState(0);
+  const [powerupAnim, setPowerupAnim] = useState<{active: boolean, type: string, start: number}|null>(null);
 
   // Draw course, obstacles, aiming line, and animated flag
   useEffect(() => {
@@ -135,6 +136,20 @@ function App() {
     ctx.beginPath();
     ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI * 2);
     ctx.fill();
+    // Powerup animation ring
+    if (powerupAnim && powerupAnim.active) {
+      const elapsed = Date.now() - powerupAnim.start;
+      if (elapsed < 700) {
+        ctx.save();
+        ctx.globalAlpha = 1 - elapsed / 700;
+        ctx.strokeStyle = powerupAnim.type === 'superShot' ? '#ffeb3b' : powerupAnim.type === 'ghostBall' ? '#00e5ff' : '#8bc34a';
+        ctx.lineWidth = 8 + 8 * Math.sin(elapsed / 80);
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, BALL_RADIUS + 12 + 6 * Math.sin(elapsed / 80), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
     // Hole
     ctx.fillStyle = '#795548';
     ctx.fillRect(hole.x - 15, hole.y - 30, 30, 60);
@@ -175,7 +190,7 @@ function App() {
       ctx.lineTo(aimEnd.x - arrowLen * Math.cos(angle + 0.3), aimEnd.y - arrowLen * Math.sin(angle + 0.3));
       ctx.stroke();
     }
-  }, [ball, aiming, aimStart, aimEnd, obstacles, hole, showAimingLine, ballColor, trail]);
+  }, [ball, aiming, aimStart, aimEnd, obstacles, hole, showAimingLine, ballColor, trail, powerupAnim]);
 
   // Ball movement animation with improved obstacle collision
   useEffect(() => {
@@ -276,12 +291,12 @@ function App() {
 
   const handleMouseUp = () => {
     if (!aiming || !aimStart || !aimEnd) return;
-    const dx = aimStart.x - aimEnd.x;
-    const dy = aimStart.y - aimEnd.y;
+    const dx = aimEnd.x - aimStart.x;
+    const dy = aimEnd.y - aimStart.y;
     const power = Math.min(Math.hypot(dx, dy) / 14, 10);
     if (power > 0.5) {
       shootSound.currentTime = 0; shootSound.play();
-      setVelocity({ x: dx / 18, y: dy / 18 });
+      setVelocity({ x: dx / 100, y: dy / 100 });
       setMoving(true);
       setStrokeCount(c => c + 1);
       setMessage('');
@@ -306,6 +321,7 @@ function App() {
     setShowSnackbar(false);
     setSuperShotActive(false);
     setTip(TIPS[Math.floor(Math.random() * TIPS.length)]);
+    setGameOver(false);
   };
 
   const handleNextLevel = () => {
@@ -357,12 +373,17 @@ function App() {
   // Powerup logic
   const usePowerup = (type: Powerup['type']) => {
     if (moving) return;
+    setPowerupAnim({active: true, type, start: Date.now()});
+    setTimeout(() => setPowerupAnim(null), 700);
     if (type === 'superShot') {
       setSuperShotActive(true);
       setPowerups(p => p.map(pp => pp.type === 'superShot' && !pp.used ? { ...pp, used: true } : pp));
     } else if (type === 'teleport') {
       setBall(prev => ({ x: hole.x - 2 * BALL_RADIUS, y: hole.y }));
       setPowerups(p => p.map(pp => pp.type === 'teleport' && !pp.used ? { ...pp, used: true } : pp));
+    } else if (type === 'ghostBall') {
+      setGhostBall(true);
+      setPowerups(p => p.map(pp => pp.type === 'ghostBall' && !pp.used ? { ...pp, used: true } : pp));
     }
   };
 
@@ -465,6 +486,7 @@ function App() {
           setShowAimingLine={setShowAimingLine}
         />
         <Typography variant="h3" gutterBottom>MiniGolf Game <SportsGolfIcon fontSize="large" /></Typography>
+        <Button variant="outlined" sx={{ mb: 2 }} onClick={() => setShowWorlds(true)}>Worlds</Button>
         <Typography variant="h6" color="primary" sx={{ mb: 1 }}>Level {level + 1} / {LEVELS.length}</Typography>
         <Typography variant="h6" color="secondary" sx={{ mb: 1 }}>Par: {par}</Typography>
         <canvas
@@ -476,8 +498,8 @@ function App() {
             background: '#4caf50',
             borderRadius: 8,
             cursor: moving ? 'not-allowed' : 'crosshair',
-            width: '100%',
-            height: '70vh',
+            width: CANVAS_W,
+            height: CANVAS_H,
             maxWidth: 1200,
             maxHeight: 800,
             display: 'block',
