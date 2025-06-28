@@ -7,6 +7,7 @@ import LockIcon from '@mui/icons-material/Lock';
 interface World {
   name: string;
   image: string;
+  levels: number[];
 }
 
 interface WorldsHomeScreenProps {

@@ -32,8 +32,8 @@ import Tooltip from '@mui/material/Tooltip';
 
 const BALL_RADIUS = 15;
 const HOLE_RADIUS = 10;
-const CANVAS_W = window.innerWidth > 1200 ? 1200 : window.innerWidth - 100;
-const CANVAS_H = window.innerHeight > 800 ? 800 : window.innerHeight - 100;
+const CANVAS_W = window.innerWidth > 800 ? 800 : window.innerWidth - 100;
+const CANVAS_H = window.innerHeight > 600 ? 600 : window.innerHeight - 100;
 const FRICTION = 0.90;
 const MIN_SPEED = 0.2;
 
@@ -53,10 +53,10 @@ const TIPS = [
 ];
 
 const WORLDS = [
-  { name: 'Forest', image: '/world-forest.jpg' },
-  { name: 'Desert', image: '/world-desert.jpg' },
-  { name: 'Space', image: '/world-space.jpg' },
-  { name: 'Candy', image: '/world-candy.jpg' },
+  { name: 'Forest', image: '/world-forest.jpg', levels: [0, 1] },
+  { name: 'Desert', image: '/world-desert.jpg', levels: [2, 3] },
+  { name: 'Space', image: '/world-space.jpg', levels: [4, 5] },
+  { name: 'Candy', image: '/world-candy.jpg', levels: [6, 7] },
 ];
 
 function getRandomColor() {
@@ -119,6 +119,18 @@ function App() {
     grad.addColorStop(1, '#4caf50');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    
+    // Draw walls around the game board
+    ctx.fillStyle = '#8d6e63';
+    // Top wall
+    ctx.fillRect(0, 0, CANVAS_W, 20);
+    // Bottom wall
+    ctx.fillRect(0, CANVAS_H - 20, CANVAS_W, 20);
+    // Left wall
+    ctx.fillRect(0, 0, 20, CANVAS_H);
+    // Right wall
+    ctx.fillRect(CANVAS_W - 20, 0, 20, CANVAS_H);
+    
     // Obstacles
     ctx.fillStyle = '#607d8b';
     obstacles.forEach(o => ctx.fillRect(o.x, o.y, o.w, o.h));
@@ -201,9 +213,25 @@ function App() {
         let next = { x: prev.x + velocity.x + wind.x, y: prev.y + velocity.y + wind.y };
         let vx = velocity.x;
         let vy = velocity.y;
-        // Wall collision
-        if (next.x - BALL_RADIUS < 0 || next.x + BALL_RADIUS > CANVAS_W) vx = -vx;
-        if (next.y - BALL_RADIUS < 0 || next.y + BALL_RADIUS > CANVAS_H) vy = -vy;
+        
+        // Wall collision (with 20px thick walls) - constrain position and reverse velocity
+        if (next.x - BALL_RADIUS < 20) {
+          next.x = 20 + BALL_RADIUS;
+          vx = -vx;
+        }
+        if (next.x + BALL_RADIUS > CANVAS_W - 20) {
+          next.x = CANVAS_W - 20 - BALL_RADIUS;
+          vx = -vx;
+        }
+        if (next.y - BALL_RADIUS < 20) {
+          next.y = 20 + BALL_RADIUS;
+          vy = -vy;
+        }
+        if (next.y + BALL_RADIUS > CANVAS_H - 20) {
+          next.y = CANVAS_H - 20 - BALL_RADIUS;
+          vy = -vy;
+        }
+        
         // Obstacle collision (improved AABB)
         for (const o of obstacles) {
           if (
@@ -266,62 +294,117 @@ function App() {
 
   // Mouse events for aiming
   const getCanvasPos = (e: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
-    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+    const canvas = e.target as HTMLCanvasElement;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
     return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
     };
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
-    if (moving) return;
+    console.log('Mouse down event triggered');
+    if (moving) {
+      console.log('Ball is moving, ignoring mouse down');
+      return;
+    }
     const pos = getCanvasPos(e);
+    console.log('Mouse position:', pos, 'Ball position:', ball);
     const dist = Math.hypot(pos.x - ball.x, pos.y - ball.y);
-    if (dist <= BALL_RADIUS) {
+    console.log('Distance to ball:', dist, 'Ball radius:', BALL_RADIUS);
+    if (dist <= BALL_RADIUS + 10) { // Increased tolerance
+      console.log('Starting aim');
       setAiming(true);
       setAimStart({ ...ball });
       setAimEnd(pos);
+    } else {
+      console.log('Mouse not on ball');
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
     if (!aiming) return;
-    setAimEnd(getCanvasPos(e));
+    const pos = getCanvasPos(e);
+    setAimEnd(pos);
   };
 
-  const handleMouseUp = () => {
-    if (!aiming || !aimStart || !aimEnd) return;
+  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
+    console.log('Mouse up event triggered');
+    if (!aiming || !aimStart || !aimEnd) {
+      console.log('Not aiming or missing aim data');
+      return;
+    }
+    console.log('Shooting ball');
+    // Fix direction: ball should go in the direction the arrow is pointing (from aimStart toward aimEnd)
     const dx = aimEnd.x - aimStart.x;
     const dy = aimEnd.y - aimStart.y;
-    const power = Math.min(Math.hypot(dx, dy) / 14, 10);
-    if (power > 0.5) {
+    const power = Math.min(Math.hypot(dx, dy) / 8, 4); // Much more sensitive to small drags
+    console.log('Shot power:', power, 'dx:', dx, 'dy:', dy);
+    if (power > 0.05) { // Much lower minimum power threshold
       shootSound.currentTime = 0; shootSound.play();
-      setVelocity({ x: dx / 100, y: dy / 100 });
+      setVelocity({ x: dx / 2000, y: dy / 2000 }); // Even slower (was 1500, now 2000)
       setMoving(true);
       setStrokeCount(c => c + 1);
       setMessage('');
+      console.log('Ball shot with velocity:', { x: dx / 2000, y: dy / 2000 });
+    } else {
+      console.log('Shot power too low:', power);
     }
     setAiming(false);
     setAimStart(null);
     setAimEnd(null);
   };
 
+  // Global mouse up handler to clear stuck states
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      if (aiming) {
+        console.log('Global mouse up - clearing aiming state');
+        setAiming(false);
+        setAimStart(null);
+        setAimEnd(null);
+      }
+    };
+
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => document.removeEventListener('mouseup', handleGlobalMouseUp);
+  }, [aiming]);
+
   const handleReset = () => {
+    console.log('Resetting level');
+    // Force stop any ongoing animations
+    setMoving(false);
+    setVelocity({ x: 0, y: 0 });
+    
+    // Reset all game state
     setBall({ ...LEVELS[level].ball });
     setHole({ ...LEVELS[level].hole });
     setObstacles(LEVELS[level].obstacles);
     setPowerups(LEVELS[level].powerups.map(p => ({ ...p })));
-    setVelocity({ x: 0, y: 0 });
     setMessage('');
-    setMoving(false);
     setStrokeCount(0);
+    
+    // Clear all aiming state
     setAiming(false);
     setAimStart(null);
     setAimEnd(null);
+    
+    // Clear all effects and UI
     setShowSnackbar(false);
     setSuperShotActive(false);
+    setGhostBall(false);
     setTip(TIPS[Math.floor(Math.random() * TIPS.length)]);
     setGameOver(false);
+    setTrail([]);
+    setConfetti([]);
+    setPowerupAnim(null);
+    
+    // Force a small delay to ensure state is cleared
+    setTimeout(() => {
+      console.log('Level reset complete - ready to shoot');
+    }, 100);
   };
 
   const handleNextLevel = () => {
@@ -469,7 +552,26 @@ function App() {
 
   // On startup, show WorldsHomeScreen
   if (showWorlds) {
-    return <WorldsHomeScreen worlds={WORLDS} unlockedWorlds={unlockedWorlds} onSelectWorld={i => { setSelectedWorld(i); setShowWorlds(false); }} />;
+    return <WorldsHomeScreen worlds={WORLDS} unlockedWorlds={unlockedWorlds} onSelectWorld={i => { 
+      setSelectedWorld(i); 
+      setShowWorlds(false);
+      // Set level to first level of selected world
+      setLevel(WORLDS[i].levels[0]);
+      setBall({ ...LEVELS[WORLDS[i].levels[0]].ball });
+      setHole({ ...LEVELS[WORLDS[i].levels[0]].hole });
+      setObstacles(LEVELS[WORLDS[i].levels[0]].obstacles);
+      setPowerups(LEVELS[WORLDS[i].levels[0]].powerups.map(p => ({ ...p })));
+      setVelocity({ x: 0, y: 0 });
+      setMessage('');
+      setMoving(false);
+      setStrokeCount(0);
+      setAiming(false);
+      setAimStart(null);
+      setAimEnd(null);
+      setShowSnackbar(false);
+      setSuperShotActive(false);
+      setGameOver(false);
+    }} />;
   }
 
   return (
@@ -500,8 +602,6 @@ function App() {
             cursor: moving ? 'not-allowed' : 'crosshair',
             width: CANVAS_W,
             height: CANVAS_H,
-            maxWidth: 1200,
-            maxHeight: 800,
             display: 'block',
             margin: '0 auto',
           }}
@@ -540,3 +640,6 @@ function App() {
 }
 
 export default App;
+
+
+

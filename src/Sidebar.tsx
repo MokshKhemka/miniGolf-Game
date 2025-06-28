@@ -24,7 +24,7 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ strokeCount, handleReset, moving, message, powerups, usePowerup, tip }) => (
   <Paper elevation={3} sx={{ width: 300, p: 3, display: 'flex', flexDirection: 'column', gap: 2, bgcolor: '#fafafa' }}>
     <Typography variant="h5">Controls</Typography>
-    <Button variant="outlined" onClick={handleReset} disabled={moving && !message} startIcon={<RestartAltIcon />}>Reset Level</Button>
+    <Button variant="outlined" onClick={handleReset} disabled={moving} startIcon={<RestartAltIcon />}>Reset Level</Button>
     <Typography variant="body1" sx={{ mt: 2, fontWeight: 'bold', fontSize: 22, color: '#1976d2' }}>
       <RocketLaunchIcon sx={{ mr: 1, verticalAlign: 'middle' }} />Strokes: {strokeCount}
     </Typography>
