@@ -10,25 +10,12 @@ import FlashOnIcon from '@mui/icons-material/FlashOn';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import CelebrationIcon from '@mui/icons-material/Celebration';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
-import PauseIcon from '@mui/icons-material/Pause';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
-import Modal from '@mui/material/Modal';
-import Select from '@mui/material/Select';
-import MenuItem from '@mui/material/MenuItem';
 import { LEVELS } from './levels';
 import type { Powerup } from './levels';
 import './App.css';
-import VolumeUpIcon from '@mui/icons-material/VolumeUp';
-import VolumeOffIcon from '@mui/icons-material/VolumeOff';
-import SettingsIcon from '@mui/icons-material/Settings';
-import ColorLensIcon from '@mui/icons-material/ColorLens';
-import React from 'react';
-import HomeScreen from './HomeScreen';
 import SettingsModal from './SettingsModal';
 import Sidebar from './Sidebar';
 import WorldsHomeScreen from './WorldsHomeScreen';
-import Tooltip from '@mui/material/Tooltip';
 
 const BALL_RADIUS = 15;
 const HOLE_RADIUS = 10;
@@ -145,9 +132,13 @@ function App() {
     });
     // Ball
     ctx.fillStyle = ballColor;
+    if (ghostBall) {
+      ctx.globalAlpha = 0.6; // Make ball semi-transparent when ghost ball is active
+    }
     ctx.beginPath();
     ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI * 2);
     ctx.fill();
+    ctx.globalAlpha = 1; // Reset transparency
     // Powerup animation ring
     if (powerupAnim && powerupAnim.active) {
       const elapsed = Date.now() - powerupAnim.start;
@@ -214,50 +205,55 @@ function App() {
         let vx = velocity.x;
         let vy = velocity.y;
         
-        // Wall collision (with 20px thick walls) - constrain position and reverse velocity
+        // Wall collision (with 20px thick walls) - bounce the ball
         if (next.x - BALL_RADIUS < 20) {
           next.x = 20 + BALL_RADIUS;
-          vx = -vx;
+          vx = -vx * 0.8; // Bounce with some energy loss
         }
         if (next.x + BALL_RADIUS > CANVAS_W - 20) {
           next.x = CANVAS_W - 20 - BALL_RADIUS;
-          vx = -vx;
+          vx = -vx * 0.8; // Bounce with some energy loss
         }
         if (next.y - BALL_RADIUS < 20) {
           next.y = 20 + BALL_RADIUS;
-          vy = -vy;
+          vy = -vy * 0.8; // Bounce with some energy loss
         }
         if (next.y + BALL_RADIUS > CANVAS_H - 20) {
           next.y = CANVAS_H - 20 - BALL_RADIUS;
-          vy = -vy;
+          vy = -vy * 0.8; // Bounce with some energy loss
         }
         
-        // Obstacle collision (improved AABB)
-        for (const o of obstacles) {
-          if (
-            next.x + BALL_RADIUS > o.x &&
-            next.x - BALL_RADIUS < o.x + o.w &&
-            next.y + BALL_RADIUS > o.y &&
-            next.y - BALL_RADIUS < o.y + o.h
-          ) {
-            // Determine collision side
-            const overlapX = Math.min(next.x + BALL_RADIUS - o.x, o.x + o.w - (next.x - BALL_RADIUS));
-            const overlapY = Math.min(next.y + BALL_RADIUS - o.y, o.y + o.h - (next.y - BALL_RADIUS));
-            if (overlapX < overlapY) {
-              vx = -vx;
-              next.x = prev.x;
-            } else {
-              vy = -vy;
-              next.y = prev.y;
+        // Obstacle collision (improved AABB) - skip if ghost ball is active
+        if (!ghostBall) {
+          for (const o of obstacles) {
+            if (
+              next.x + BALL_RADIUS > o.x &&
+              next.x - BALL_RADIUS < o.x + o.w &&
+              next.y + BALL_RADIUS > o.y &&
+              next.y - BALL_RADIUS < o.y + o.h
+            ) {
+              // Determine collision side
+              const overlapX = Math.min(next.x + BALL_RADIUS - o.x, o.x + o.w - (next.x - BALL_RADIUS));
+              const overlapY = Math.min(next.y + BALL_RADIUS - o.y, o.y + o.h - (next.y - BALL_RADIUS));
+              if (overlapX < overlapY) {
+                vx = -vx * 0.7; // Bounce off obstacles with more energy loss
+                next.x = prev.x;
+              } else {
+                vy = -vy * 0.7; // Bounce off obstacles with more energy loss
+                next.y = prev.y;
+              }
             }
           }
         }
+        
         // Friction (unless superShot)
         if (!superShotActive) {
           vx *= FRICTION;
           vy *= FRICTION;
         }
+        
         setVelocity({ x: vx, y: vy });
+        
         // Check if in hole
         const dist = Math.hypot(next.x - hole.x, next.y - hole.y);
         if (dist < hole.r) {
@@ -277,6 +273,7 @@ function App() {
           }
           return { ...hole };
         }
+        
         // Stop if slow
         if (Math.abs(vx) < MIN_SPEED && Math.abs(vy) < MIN_SPEED) {
           setMoving(false);
@@ -284,13 +281,14 @@ function App() {
           setSuperShotActive(false);
           return next;
         }
+        
         animId = requestAnimationFrame(animate);
         return next;
       });
     }
     animId = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animId);
-  }, [moving, velocity, obstacles, hole, superShotActive, level, strokeCount, wind]);
+  }, [moving, velocity, obstacles, hole, superShotActive, level, strokeCount, wind, ghostBall]);
 
   // Mouse events for aiming
   const getCanvasPos = (e: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
@@ -458,15 +456,25 @@ function App() {
     if (moving) return;
     setPowerupAnim({active: true, type, start: Date.now()});
     setTimeout(() => setPowerupAnim(null), 700);
+    
     if (type === 'superShot') {
       setSuperShotActive(true);
       setPowerups(p => p.map(pp => pp.type === 'superShot' && !pp.used ? { ...pp, used: true } : pp));
+      setMessage('Super Shot Activated! Ball ignores friction!');
+      setTimeout(() => setMessage(''), 2000);
     } else if (type === 'teleport') {
-      setBall(prev => ({ x: hole.x - 2 * BALL_RADIUS, y: hole.y }));
+      // Teleport to a strategic position near the hole
+      const teleportX = hole.x - 3 * BALL_RADIUS;
+      const teleportY = hole.y;
+      setBall({ x: teleportX, y: teleportY });
       setPowerups(p => p.map(pp => pp.type === 'teleport' && !pp.used ? { ...pp, used: true } : pp));
+      setMessage('Teleported near the hole!');
+      setTimeout(() => setMessage(''), 2000);
     } else if (type === 'ghostBall') {
       setGhostBall(true);
       setPowerups(p => p.map(pp => pp.type === 'ghostBall' && !pp.used ? { ...pp, used: true } : pp));
+      setMessage('Ghost Ball Activated! Pass through obstacles!');
+      setTimeout(() => setMessage(''), 2000);
     }
   };
 
